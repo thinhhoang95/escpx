@@ -1,0 +1,47 @@
+===============================================================================
+[bold,center]Agility, Pattern Matching, and Problem Taste
+
+[bold]Agility: stay light
+
+[two-columns]
+Ship before noon twice weekly. Build the smallest thing that can fail in front of reality.
+One artificial constraint. Solve without your favorite tool.
+Teach from a blank page weekly. No slides, no jargon.
+Keep a kill list. Try to break your proudest approach every Friday.
+Pattern matching: see the skeleton
+
+Mechanism library, not paper library. One page per mechanism with diagram, where it appears, when it fails. Review five cards each morning.
+Daily analogy drill, ten minutes. Force three analogies from unrelated domains. Note where the mapping breaks.
+Redescribe four ways: sketch, user story, equation, code.
+Interleave fields. Thirty minutes daily outside your discipline, extract one transferable principle.
+Toy worlds. Keep three small sandboxes you can modify in an afternoon.
+Problem taste: three filters
+
+Consequence. Does it change a real decision or remove real cost? Log irritations with time or money cost.
+Non-obviousness. Can a competent person solve it in a week with existing tools? If yes, drop.
+Durability. Will the question matter in five years if tools change? If no, drop.
+Pre-mortem. Write one page on how it fails in six months. If failures are about prestige, walk away.
+[end-two-columns]
+
+One notebook with three sections: irritations, mechanisms, analogies. Date everything.
+Twelve favorite problems list. Update quarterly.
+Personal ban list of overused tools or phrases.
+Keep your loops faster than the culture around you.
+
+[bold] Learning to See Differently
+
+If I had to pick one, I would not pick novelty, or intelligence, or divergent thinking. I would pick seeing.
+
+Creativity at its root is the capacity to perceive a hidden equivalence. You hold two frames at once that everyone else keeps separate, and you let them interfere until a third thing appears. Koestler called it bisociation. Poincaré described it as the sudden perception of a true relation that was already there. It feels like invention, but it is recognition.
+
+That is why the habits we talked about work. Agility keeps your eyes close to the phenomenon so you have fresh material to see. Pattern matching builds a library of deep shapes, not surface features, so you have more frames to try. Problem taste filters for situations where a new equivalence would actually matter, because seeing is cheap, caring is rare.
+
+Seeing is not passive. It has a structure:
+
+Attention to friction. You notice where the world resists expectation. An irritation, a delay, a cost that should not exist. Most minds smooth it over. A creative mind lingers.
+Holding the tension. You refuse the early closure of "this is like that other paper" or "this is just how it is done." You keep two unlike descriptions alive: the user story and the equation, the market stall and the packet queue, the enzyme and the search algorithm.
+Testing the fit. You ask what the equivalence predicts. If traffic in Ho Chi Minh City really is a buffer with bursty arrivals, then metering lights should behave like TCP slow start. You ship the smallest test before noon. Seeing collapses into usefulness only when it makes a bet.
+Novelty without a true equivalence is decoration. Intelligence without attention is recycling. The one thing you cannot outsource is noticing what is actually there, not what the literature trained you to expect.
+
+Cultivate that, and creativity stops feeling mystical. You walk around with a quiet question: where is the same shape wearing a different costume today? Write one down daily. After a month, your mind begins to answer before you ask.
+===============================================================================
