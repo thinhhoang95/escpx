@@ -12,7 +12,32 @@ import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 
-import escp
+def load_escp_components():
+    project_root = Path(__file__).resolve().parent
+    patched_root = project_root / "escp_lib_patched"
+
+    if patched_root.is_dir():
+        patched_root_str = str(patched_root)
+        if patched_root_str not in sys.path:
+            sys.path.insert(0, patched_root_str)
+
+        try:
+            from commands.commands_9_pin import Commands_9_Pin
+            from commands.commands_24_48_pin import Commands_24_48_Pin
+            from printer.usb_printer import UsbPrinter
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to load patched ESC/P library from {patched_root}"
+            ) from exc
+
+        return Commands_9_Pin, Commands_24_48_Pin, UsbPrinter
+
+    import escp
+
+    return escp.Commands_9_Pin, escp.Commands_24_48_Pin, escp.UsbPrinter
+
+
+Commands_9_Pin, Commands_24_48_Pin, UsbPrinter = load_escp_components()
 
 
 TABLE_START = "[table]"
@@ -308,9 +333,9 @@ def parse_document(text: str) -> tuple[int, list[RenderLine]]:
 
 def build_escp_buffer(rendered_lines: list[RenderLine], pins: int) -> bytes:
     if pins == 9:
-        commands = escp.Commands_9_Pin()
+        commands = Commands_9_Pin()
     elif pins in (24, 48):
-        commands = escp.Commands_24_48_Pin()
+        commands = Commands_24_48_Pin()
     else:
         raise ValueError(f"Invalid number of pins: {pins}")
     # Force draft bitmap font on 24/48-pin printers:
@@ -359,18 +384,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--pins",
         type=int,
-        default=24,
+        default=9,
         choices=[9, 24, 48],
         help="Printer pin count for ESC/P command set (default: 24).",
     )
     parser.add_argument(
         "--vendor-id",
         type=parse_int,
+        default=0x04b8,
         help="USB vendor ID (decimal or hex, e.g. 0x04b8). Required unless --test.",
     )
     parser.add_argument(
         "--product-id",
         type=parse_int,
+        default=0x0005,
         help="USB product ID (decimal or hex). Required unless --test.",
     )
     parser.add_argument(
@@ -406,7 +433,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.vendor_id is None or args.product_id is None:
         raise SystemExit("--vendor-id and --product-id are required unless --test is set.")
 
-    printer = escp.UsbPrinter(
+    printer = UsbPrinter(
         id_vendor=args.vendor_id,
         id_product=args.product_id,
         endpoint_out=args.endpoint_out,

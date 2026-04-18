@@ -1,0 +1,18 @@
+===============================================================================
+[center,bold]MID-TERM GOAL SHEET
+[center]Ordoscope Performance Monitoring Systems
+
+PAY TO THE ORDER OF:        ORDO-ID:                DOMICILIATION:
+THINH HOANG DINH            ODEU.171528264700       Ordo Central Bank (ODCB)
+
+[table]Date[8]|Task[30]|Date[8]|Task[30]|
+31/04|Complete the RegulationZero paper|31/04|Complete the tactical simulator
+31/04|Complete all VLU paperwork|31/04|Run 10 rounds
+[endtable]
+
+CHECK ISSUER        CHECK RECIPIENT                             CONTROL
+
+
+
+
+===============================================================================
