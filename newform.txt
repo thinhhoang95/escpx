@@ -5,10 +5,11 @@
 PAY TO THE ORDER OF:        ORDO-ID:                DOMICILIATION:
 THINH HOANG DINH            ODEU.171528264700       Ordo Central Bank (ODCB)
 
-[table]Date[8]|Task[30]|Date[8]|Task[30]|
-31/04|Complete the RegulationZero paper|31/04|Complete the tactical simulator
-31/04|Complete all VLU paperwork|31/04|Run 10 rounds
-[endtable]
+Run 10 rounds                   01 02 03 04 05 06 07 08 09 10
+Complete the RZ paper           [ ]
+Send 5 cold emails              01 02 03 04 05
+Complete the tactical simulator [ ]
+
 
 CHECK ISSUER        CHECK RECIPIENT                             CONTROL
 
