@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Usage example
-# python parser.py form.txt --test
-# python parser.py form.txt --vendor-id 0xXXXX --product-id 0xYYYY --pins 24
+# python xparser.py form.txt --test
+# python xparser.py form.txt --vendor-id 0xXXXX --product-id 0xYYYY --pins 24
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 from form_rendering import (
     UsbPrinter,
-    build_text_escp_buffer,
+    build_thermal_escp_buffer,
     parse_document,
     parse_int,
     print_preview,
@@ -42,13 +42,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--vendor-id",
         type=parse_int,
-        default=0x04B8,
+        default=0x0483,
         help="USB vendor ID (decimal or hex, e.g. 0x04b8). Required unless --test.",
     )
     parser.add_argument(
         "--product-id",
         type=parse_int,
-        default=0x0005,
+        default=0x5743,
         help="USB product ID (decimal or hex). Required unless --test.",
     )
     parser.add_argument(
@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
 
     text = Path(args.source).read_text(encoding=args.encoding)
-    _, rendered_lines = parse_document(text)
+    page_width, rendered_lines = parse_document(text)
 
     if args.test:
         print_preview(rendered_lines)
@@ -92,7 +92,13 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        printer.send(build_text_escp_buffer(rendered_lines, pins=int(args.pins)))
+        printer.send(
+            build_thermal_escp_buffer(
+                rendered_lines,
+                pins=int(args.pins),
+                page_width=page_width,
+            )
+        )
     finally:
         printer.close()
 
