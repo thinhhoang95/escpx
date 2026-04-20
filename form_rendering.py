@@ -19,20 +19,26 @@ def load_escp_components():
         try:
             from commands.commands_9_pin import Commands_9_Pin
             from commands.commands_24_48_pin import Commands_24_48_Pin
+            from commands.parameters import Margin
             from printer.usb_printer import UsbPrinter
         except Exception as exc:
             raise RuntimeError(
                 f"Failed to load patched ESC/P library from {patched_root}"
             ) from exc
 
-        return Commands_9_Pin, Commands_24_48_Pin, UsbPrinter
+        return Commands_9_Pin, Commands_24_48_Pin, Margin, UsbPrinter
 
     import escp
 
-    return escp.Commands_9_Pin, escp.Commands_24_48_Pin, escp.UsbPrinter
+    try:
+        margin = escp.Margin
+    except AttributeError:
+        from escp.commands import Margin as margin
+
+    return escp.Commands_9_Pin, escp.Commands_24_48_Pin, margin, escp.UsbPrinter
 
 
-Commands_9_Pin, Commands_24_48_Pin, UsbPrinter = load_escp_components()
+Commands_9_Pin, Commands_24_48_Pin, Margin, UsbPrinter = load_escp_components()
 
 
 TABLE_START = "[table]"
@@ -50,6 +56,7 @@ FULL_CUT_COMMAND = b"\x1dV\x00"
 SUPPORTED_TAGS = {"center", "bold"}
 MARKUP_RE = re.compile(r"^\[(?P<tags>[a-zA-Z,\s]+)\](?P<content>.*)$")
 HEADER_CELL_RE = re.compile(r"^(?P<label>.*?)(?:\[(?P<width>\d+)])?$")
+PITCH_TO_COLUMNS = {10: 80, 12: 96, 15: 120}
 
 
 @dataclass
@@ -59,6 +66,16 @@ class RenderLine:
     segments: list[tuple[str, bool]] | None = None
     kind: str = "text"
     qr_payload: str | None = None
+
+
+@dataclass(frozen=True)
+class TextLayout:
+    boundary_width: int
+    pitch: int
+    margin_left: int
+    margin_right: int
+    content_width: int
+    right_margin_column: int
 
 
 def parse_int(value: str) -> int:
@@ -211,30 +228,33 @@ def render_two_columns(
     if left_width <= 0 or right_width <= 0:
         raise ValueError("Page width is too small for a two-column block.")
 
-    wrap_width = min(left_width, right_width)
-    wrapped_lines: list[tuple[str, bool]] = []
-    for raw_line in body_lines:
-        if raw_line.strip() == "":
-            wrapped_lines.append(("", False))
-            continue
-        content, tags = parse_line_markup(raw_line)
-        wrapped = wrap_text(content, wrap_width) if content else [""]
-        for wrapped_line in wrapped:
-            value = wrapped_line
-            if "center" in tags:
-                value = wrapped_line.strip().center(wrap_width)
-            wrapped_lines.append((value, "bold" in tags))
-
-    while wrapped_lines and wrapped_lines[0][0] == "":
-        wrapped_lines.pop(0)
-    while wrapped_lines and wrapped_lines[-1][0] == "":
-        wrapped_lines.pop()
-    if not wrapped_lines:
+    trimmed_lines = body_lines[:]
+    while trimmed_lines and trimmed_lines[0].strip() == "":
+        trimmed_lines.pop(0)
+    while trimmed_lines and trimmed_lines[-1].strip() == "":
+        trimmed_lines.pop()
+    if not trimmed_lines:
         return []
 
-    split_at = (len(wrapped_lines) + 1) // 2
-    left_lines = wrapped_lines[:split_at]
-    right_lines = wrapped_lines[split_at:]
+    def wrap_column(lines: list[str], width: int) -> list[tuple[str, bool]]:
+        wrapped_lines: list[tuple[str, bool]] = []
+        for raw_line in lines:
+            if raw_line.strip() == "":
+                wrapped_lines.append(("", False))
+                continue
+
+            content, tags = parse_line_markup(raw_line)
+            wrapped = wrap_text(content, width) if content else [""]
+            for wrapped_line in wrapped:
+                value = wrapped_line
+                if "center" in tags:
+                    value = wrapped_line.strip().center(width)
+                wrapped_lines.append((value, "bold" in tags))
+        return wrapped_lines
+
+    split_at = (len(trimmed_lines) + 1) // 2
+    left_lines = wrap_column(trimmed_lines[:split_at], left_width)
+    right_lines = wrap_column(trimmed_lines[split_at:], right_width)
     row_count = max(len(left_lines), len(right_lines))
 
     rendered: list[RenderLine] = []
@@ -265,7 +285,9 @@ def render_qr_placeholder(payload: str) -> str:
     return f"QR CODE for [{payload}]"
 
 
-def parse_document(text: str) -> tuple[int, list[RenderLine]]:
+def parse_document(
+    text: str, *, page_width_override: int | None = None
+) -> tuple[int, list[RenderLine]]:
     source_lines = text.splitlines()
     if not source_lines:
         raise ValueError("Input file is empty.")
@@ -279,6 +301,10 @@ def parse_document(text: str) -> tuple[int, list[RenderLine]]:
         raise ValueError("First line must be non-empty and made entirely of '=' characters.")
     if source_lines[-1] != width_line:
         raise ValueError("Last line must exactly match the first '=' boundary line.")
+    if page_width_override is not None and page_width_override <= 0:
+        raise ValueError("Page width override must be > 0.")
+
+    layout_width = page_width_override if page_width_override is not None else page_width
 
     rendered: list[RenderLine] = []
     index = 1
@@ -315,7 +341,7 @@ def parse_document(text: str) -> tuple[int, list[RenderLine]]:
             if index >= last_content_index:
                 raise ValueError("Missing [end-two-columns] for [two-columns] block.")
 
-            rendered.extend(render_two_columns(block_lines, page_width))
+            rendered.extend(render_two_columns(block_lines, layout_width))
             index += 1
             continue
 
@@ -335,16 +361,16 @@ def parse_document(text: str) -> tuple[int, list[RenderLine]]:
             if index >= last_content_index:
                 raise ValueError("Missing [endtable] for [table] block.")
 
-            rendered.extend(render_table(header_spec, body_rows, page_width))
+            rendered.extend(render_table(header_spec, body_rows, layout_width))
             index += 1
             continue
 
         content, tags = parse_line_markup(raw_line)
-        wrapped = wrap_text(content, page_width) if content else [""]
+        wrapped = wrap_text(content, layout_width) if content else [""]
         for line in wrapped:
             value = line
             if "center" in tags:
-                value = line.strip().center(page_width)
+                value = line.strip().center(layout_width)
             rendered.append(RenderLine(value, bold=("bold" in tags)))
         index += 1
 
@@ -359,9 +385,80 @@ def _make_command_set(pins: int):
     raise ValueError(f"Invalid number of pins: {pins}")
 
 
-def build_text_escp_buffer(rendered_lines: list[RenderLine], pins: int) -> bytes:
+def infer_pitch_from_page_width(page_width: int) -> int:
+    for pitch, columns in PITCH_TO_COLUMNS.items():
+        if page_width == columns:
+            return pitch
+    valid = ", ".join(str(width) for width in sorted(PITCH_TO_COLUMNS.values()))
+    raise ValueError(
+        f"Cannot infer pitch from '=' boundary width {page_width}. "
+        f"Supported widths are: {valid}."
+    )
+
+
+def columns_for_pitch(pitch: int) -> int:
+    try:
+        return PITCH_TO_COLUMNS[pitch]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported pitch: {pitch}") from exc
+
+
+def validate_page_width_for_pitch(page_width: int, pitch: int) -> None:
+    expected_width = columns_for_pitch(pitch)
+    if page_width != expected_width:
+        raise ValueError(
+            f"Pitch {pitch} expects {expected_width} '=' characters, but found {page_width}."
+        )
+
+
+def resolve_text_layout(
+    boundary_width: int,
+    *,
+    pitch: int | None = None,
+    margin_left: int = 0,
+    margin_right: int = 0,
+) -> TextLayout:
+    if margin_left < 0 or margin_right < 0:
+        raise ValueError("Margins must be >= 0.")
+
+    resolved_pitch = infer_pitch_from_page_width(boundary_width) if pitch is None else pitch
+    validate_page_width_for_pitch(boundary_width, resolved_pitch)
+
+    content_width = boundary_width - margin_left - margin_right
+    if content_width <= 0:
+        raise ValueError(
+            "Invalid margins: left + right margins must be less than printable columns."
+        )
+
+    return TextLayout(
+        boundary_width=boundary_width,
+        pitch=resolved_pitch,
+        margin_left=margin_left,
+        margin_right=margin_right,
+        content_width=content_width,
+        right_margin_column=boundary_width - margin_right,
+    )
+
+
+def build_text_escp_buffer(
+    rendered_lines: list[RenderLine],
+    pins: int,
+    *,
+    pitch: int = 10,
+    margin_left: int = 0,
+    margin_right: int = 0,
+) -> bytes:
+    layout = resolve_text_layout(
+        columns_for_pitch(pitch),
+        pitch=pitch,
+        margin_left=margin_left,
+        margin_right=margin_right,
+    )
+
     commands = _make_command_set(pins)
-    commands.init().draft(False).condensed(False).character_width(10)
+    commands.init().draft(False).condensed(False).character_width(layout.pitch)
+    commands.margin(Margin.LEFT, layout.margin_left)
+    commands.margin(Margin.RIGHT, layout.right_margin_column)
 
     bold_enabled = False
     for line in rendered_lines:
@@ -486,6 +583,7 @@ def build_thermal_escp_buffer(rendered_lines: list[RenderLine], pins: int, page_
     return commands.buffer + FULL_CUT_COMMAND
 
 
-def print_preview(rendered_lines: list[RenderLine]) -> None:
+def print_preview(rendered_lines: list[RenderLine], *, margin_left: int = 0) -> None:
+    prefix = " " * margin_left
     for line in rendered_lines:
-        print(line.text)
+        print(f"{prefix}{line.text}")

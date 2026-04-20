@@ -37,7 +37,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         default=9,
         choices=[9, 24, 48],
-        help="Printer pin count for ESC/P command set (default: 24).",
+        help="Printer pin count for ESC/P command set (default: 9).",
     )
     parser.add_argument(
         "--vendor-id",

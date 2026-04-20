@@ -14,6 +14,7 @@ from form_rendering import (
     parse_document,
     parse_int,
     print_preview,
+    resolve_text_layout,
 )
 
 
@@ -37,7 +38,26 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         default=9,
         choices=[9, 24, 48],
-        help="Printer pin count for ESC/P command set (default: 24).",
+        help="Printer pin count for ESC/P command set (default: 9).",
+    )
+    parser.add_argument(
+        "--pitch",
+        type=int,
+        default=None,
+        choices=[10, 12, 15],
+        help="Character pitch in CPI. If omitted, inferred from '=' boundary width (80/96/120).",
+    )
+    parser.add_argument(
+        "--ml",
+        type=int,
+        default=4,
+        help="Left margin in columns (default: 4).",
+    )
+    parser.add_argument(
+        "--mr",
+        type=int,
+        default=4,
+        help="Right margin in columns (default: 4).",
     )
     parser.add_argument(
         "--vendor-id",
@@ -75,10 +95,20 @@ def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
 
     text = Path(args.source).read_text(encoding=args.encoding)
-    _, rendered_lines = parse_document(text)
+    try:
+        boundary_width, _ = parse_document(text)
+        layout = resolve_text_layout(
+            boundary_width,
+            pitch=int(args.pitch) if args.pitch is not None else None,
+            margin_left=int(args.ml),
+            margin_right=int(args.mr),
+        )
+        _, rendered_lines = parse_document(text, page_width_override=layout.content_width)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
     if args.test:
-        print_preview(rendered_lines)
+        print_preview(rendered_lines, margin_left=layout.margin_left)
         return 0
 
     if args.vendor_id is None or args.product_id is None:
@@ -92,7 +122,17 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        printer.send(build_text_escp_buffer(rendered_lines, pins=int(args.pins)))
+        printer.send(
+            build_text_escp_buffer(
+                rendered_lines,
+                pins=int(args.pins),
+                pitch=layout.pitch,
+                margin_left=layout.margin_left,
+                margin_right=layout.margin_right,
+            )
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     finally:
         printer.close()
 
