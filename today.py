@@ -7,7 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -21,7 +21,7 @@ DAYPREVIEW_URL = (
     "tTwi2-s0OT_9py1KJ36oUsFK352ZTDt3D3bjjvOcAYQ&includeDaily=true"
 )
 
-FORM_WIDTH = 79
+FORM_WIDTH = 48
 TASK_BUCKETS = (
     "active",
     "expireThisWeek",
@@ -47,6 +47,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--test",
         action="store_true",
         help="Render preview to console by invoking xparser.py --test.",
+    )
+    parser.add_argument(
+        "--shift",
+        type=int,
+        default=0,
+        help="Shift the daypreview request by N days (default: 0).",
     )
     parser.add_argument(
         "--timeout",
@@ -118,11 +124,23 @@ def format_gmt_offset(dt: datetime) -> str:
     return f"GMT{sign}{hours}"
 
 
-def format_printed_on(dt: datetime) -> str:
-    return (
-        f"Printed on {dt.strftime('%A, %B')} {dt.day}, {dt.year} "
+def build_daypreview_url(shift: int) -> str:
+    if shift > 0:
+        return f"{DAYPREVIEW_URL}&shift_today_by_x_day={shift}"
+    return DAYPREVIEW_URL
+
+
+def format_printed_for(dt: datetime, shift: int) -> str:
+    if shift > 0:
+        dt = dt + timedelta(days=shift)
+
+    printed_at = (
+        f"{dt.strftime('%A, %B')} {dt.day}, {dt.year} "
         f"at {dt.strftime('%H:%M:%S')} ({format_gmt_offset(dt)})"
     )
+    if shift > 0:
+        return f"Printed for {printed_at} that is +{shift} day from today"
+    return f"Printed on {printed_at}"
 
 
 def fetch_daypreview(url: str, timeout: float) -> dict[str, Any]:
@@ -160,38 +178,54 @@ def require_list(container: dict[str, Any], key: str) -> list[Any]:
     return value
 
 
+def get_calendar_bucket_events(
+    buckets: dict[str, Any], bucket_name: str
+) -> list[dict[str, Any]]:
+    events = buckets.get(bucket_name, [])
+    if not isinstance(events, list):
+        raise DayPreviewError(f"calendar.buckets.{bucket_name} must be a list")
+
+    filtered: list[dict[str, Any]] = []
+    for event in events:
+        if isinstance(event, dict):
+            filtered.append(event)
+    return filtered
+
+
+def format_calendar_event(event: dict[str, Any], local_tz: ZoneInfo) -> str:
+    summary = to_ascii_text(event.get("summary")) or "(no title)"
+    start_raw = event.get("start")
+    if not isinstance(start_raw, str) or not start_raw:
+        return f"{summary}@(no start)"
+
+    try:
+        start_local = parse_iso_datetime(start_raw).astimezone(local_tz)
+    except ValueError:
+        return f"{summary}@(invalid start)"
+
+    if bool(event.get("allDay")):
+        when = start_local.strftime("%a %d/%m")
+    else:
+        when = start_local.strftime("%a %d/%m, %H:%M")
+
+    return f"{summary}@{when}"
+
+
 def render_calendar(data: dict[str, Any], local_tz: ZoneInfo) -> list[str]:
     calendar = require_dict(data, "calendar")
     buckets = require_dict(calendar, "buckets")
-    events = buckets.get("thisWeek", [])
-    if not isinstance(events, list):
-        raise DayPreviewError("calendar.buckets.thisWeek must be a list")
 
-    rendered: list[str] = []
-    for event in events:
-        if not isinstance(event, dict):
-            continue
+    events: list[dict[str, Any]] = []
+    seen_lines: set[str] = set()
+    for bucket_name in ("today", "thisWeek"):
+        for event in get_calendar_bucket_events(buckets, bucket_name):
+            rendered_line = format_calendar_event(event, local_tz)
+            if rendered_line in seen_lines:
+                continue
+            seen_lines.add(rendered_line)
+            events.append(event)
 
-        summary = to_ascii_text(event.get("summary")) or "(no title)"
-        start_raw = event.get("start")
-        if not isinstance(start_raw, str) or not start_raw:
-            rendered.append(f"{summary}@(no start)")
-            continue
-
-        try:
-            start_local = parse_iso_datetime(start_raw).astimezone(local_tz)
-        except ValueError:
-            rendered.append(f"{summary}@(invalid start)")
-            continue
-
-        if bool(event.get("allDay")):
-            when = start_local.strftime("%a %d/%m")
-        else:
-            when = start_local.strftime("%a %d/%m, %H:%M")
-
-        rendered.append(f"{summary}@{when}")
-
-    return rendered
+    return [format_calendar_event(event, local_tz) for event in events]
 
 
 def collect_task_buckets(task_obj: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
@@ -357,13 +391,13 @@ def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
 
     try:
-        data = fetch_daypreview(DAYPREVIEW_URL, timeout=args.timeout)
+        data = fetch_daypreview(build_daypreview_url(args.shift), timeout=args.timeout)
         meta = require_dict(data, "meta")
         timezone_name = meta.get("timezone")
         if not isinstance(timezone_name, str) or not timezone_name:
             raise DayPreviewError("Missing meta.timezone")
         local_tz = ZoneInfo(timezone_name)
-        printed_on = format_printed_on(datetime.now(local_tz))
+        printed_on = format_printed_for(datetime.now(local_tz), args.shift)
 
         calendar_lines = render_calendar(data, local_tz)
         daily_rows, house_titles, extra_task_sections = render_tasks(data)
